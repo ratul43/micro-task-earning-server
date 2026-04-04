@@ -73,6 +73,13 @@ async function run() {
       res.send(result);
     });
 
+    // admin update user role
+    app.put("/users/role", async (req, res) => {
+      const { email, role } = req.body;
+      const result = await usersCollection.updateOne({ email: email }, { $set: { role: role } });
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
