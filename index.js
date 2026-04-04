@@ -66,6 +66,12 @@ async function run() {
       res.send(tasks);
     });
 
+    // worker submit a task
+    app.post("/tasks/submit", async (req, res) => {
+      const taskInfo = req.body;
+      const result = await tasksCollection.insertOne(taskInfo);
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
