@@ -59,6 +59,14 @@ async function run() {
       res.send(result);
     });
 
+    // buyer get all his tasks
+    app.get("/tasks", async (req, res) => {
+      const email = req.query.email;
+      const tasks = await tasksCollection.find({ email: email }).toArray();
+      res.send(tasks);
+    });
+
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
