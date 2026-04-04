@@ -42,9 +42,16 @@ async function run() {
       res.send(result);
     });
 
-
-
-
+   // verify if email is already exist or not
+   app.get("/users/verify", async(req, res) => {
+    const email = req.query.email;
+    if(email){
+      const existingUser = await usersCollection.findOne({email: email})
+      if(existingUser){
+        return res.status(200).send({message: "Email already exist"})
+      }
+    }
+   })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
