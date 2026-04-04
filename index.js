@@ -5,7 +5,7 @@ const cors = require("cors");
 
 app.use(express.json());
 app.use(cors());
-require('dotenv').config();
+require("dotenv").config();
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
 
@@ -26,14 +26,13 @@ async function run() {
 
     const db = client.db("micro-task-earning");
     const usersCollection = db.collection("users");
+    const tasksCollection = db.collection("tasks");
 
-    
     // get all user data
     app.get("/users", async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
-
 
     // register a new user
     app.post("/users", async (req, res) => {
@@ -42,16 +41,23 @@ async function run() {
       res.send(result);
     });
 
-   // verify if email is already exist or not
-   app.get("/users/verify", async(req, res) => {
-    const email = req.query.email;
-    if(email){
-      const existingUser = await usersCollection.findOne({email: email})
-      if(existingUser){
-        return res.status(200).send({message: "Email already exist"})
+    // verify if email is already exist or not
+    app.get("/users/verify", async (req, res) => {
+      const email = req.query.email;
+      if (email) {
+        const existingUser = await usersCollection.findOne({ email: email });
+        if (existingUser) {
+          return res.status(200).send({ message: "Email already exist" });
+        }
       }
-    }
-   })
+    });
+
+    // buyer add a task
+    app.post("/tasks", async (req, res) => {
+      const task = req.body;
+      const result = await tasksCollection.insertOne(task);
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
