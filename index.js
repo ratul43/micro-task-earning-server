@@ -80,6 +80,13 @@ async function run() {
       res.send(result);
     });
 
+    // admin delete a user
+    app.delete("/users", async (req, res) => {
+      const email = req.query.email;
+      const result = await usersCollection.deleteOne({ email: email });
+      res.send(result);
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
