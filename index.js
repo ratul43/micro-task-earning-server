@@ -27,6 +27,8 @@ async function run() {
     const db = client.db("micro-task-earning");
     const usersCollection = db.collection("users");
     const tasksCollection = db.collection("tasks");
+    const workerSubmissionsCollection = db.collection("workerSubmissions");
+    const withdrawalsCollection = db.collection("withdrawals");
 
     // get all user data
     app.get("/users", async (req, res) => {
@@ -62,21 +64,43 @@ async function run() {
     // buyer get all his tasks
     app.get("/tasks", async (req, res) => {
       const email = req.query.email;
-      const tasks = await tasksCollection.find({ email: email }).toArray();
+      console.log(email);
+      const tasks = await tasksCollection
+        .find({ buyer_email: email })
+        .toArray();
       res.send(tasks);
     });
 
     // worker submit a task
     app.post("/tasks/submit", async (req, res) => {
       const taskInfo = req.body;
-      const result = await tasksCollection.insertOne(taskInfo);
+      const result = await workerSubmissionsCollection.insertOne(taskInfo);
+      res.send(result);
+    });
+
+    // worker submitted task list
+    app.get("/tasks/submit", async (req, res) => {
+      const email = req.query.email;
+      const submissions = await workerSubmissionsCollection
+        .find({ worker_email: email })
+        .toArray();
+      res.send(submissions);
+    });
+
+    // worker withdrawal request
+    app.post("/withdrawal", async (req, res) => {
+      const withdrawalInfo = req.body;
+      const result = await withdrawalsCollection.insertOne(withdrawalInfo);
       res.send(result);
     });
 
     // admin update user role
     app.put("/users/role", async (req, res) => {
       const { email, role } = req.body;
-      const result = await usersCollection.updateOne({ email: email }, { $set: { role: role } });
+      const result = await usersCollection.updateOne(
+        { email: email },
+        { $set: { role: role } },
+      );
       res.send(result);
     });
 
@@ -90,7 +114,9 @@ async function run() {
     // admin delete a task
     app.delete("/tasks", async (req, res) => {
       const taskId = req.query.id;
-      const result = await tasksCollection.deleteOne({ _id: new ObjectId(taskId) });
+      const result = await tasksCollection.deleteOne({
+        _id: new ObjectId(taskId),
+      });
       res.send(result);
     });
 
