@@ -7,7 +7,7 @@ app.use(express.json());
 app.use(cors());
 require("dotenv").config();
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 const uri = `mongodb+srv://${process.env.DB_USER_NAME}:${process.env.DB_PASSWORD}@cluster0.sb5wtw8.mongodb.net/?appName=Cluster0`;
 
@@ -57,7 +57,13 @@ async function run() {
     // buyer add a task
     app.post("/tasks", async (req, res) => {
       const task = req.body;
-      const result = await tasksCollection.insertOne(task);
+      const finalTaskData = {
+        ...task,
+        id: new ObjectId(),
+        status: "pending",
+        created_at: new Date(),
+      };
+      const result = await tasksCollection.insertOne(finalTaskData);
       res.send(result);
     });
 
@@ -119,6 +125,18 @@ async function run() {
       });
       res.send(result);
     });
+
+    // update buyer added tasks
+    app.put("/tasks", async (req, res) => {
+      const updatedData = req.body;
+      const {id} = req.query;
+      const result = await tasksCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData }
+      );
+      res.send(result);
+    });
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
