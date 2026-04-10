@@ -44,15 +44,18 @@ async function run() {
     });
 
     // verify if email is already exist or not
-    app.get("/users/verify", async (req, res) => {
-      const email = req.query.email;
-      if (email) {
-        const existingUser = await usersCollection.findOne({ email: email });
-        if (existingUser) {
-          return res.status(200).send({ message: "Email already exist" });
-        }
-      }
-    });
+    // Backend - verify email endpoint
+app.get("/users/verify", async (req, res) => {
+  const { email } = req.query;
+  
+  const user = await usersCollection.findOne({ email });
+  
+  if (user) {
+    return res.status(409).send({ message: "Email already exists" });
+  }
+  
+  res.status(200).send({ message: "Email is available" });
+});
 
     // buyer add a task
     app.post("/tasks", async (req, res) => {
@@ -70,11 +73,17 @@ async function run() {
     // buyer get all his tasks
     app.get("/tasks", async (req, res) => {
       const email = req.query.email;
-      console.log(email);
       const tasks = await tasksCollection
         .find({ buyer_email: email })
         .toArray();
       res.send(tasks);
+    });
+
+    // task details by id
+    app.get("/tasks/details", async (req, res) => {
+      const id = req.query.id;
+      const task = await tasksCollection.findOne({ _id: new ObjectId(id) });
+      res.send(task);
     });
 
     // worker submit a task
@@ -86,12 +95,22 @@ async function run() {
 
     // worker submitted task list
     app.get("/tasks/submit", async (req, res) => {
-      const email = req.query.email;
       const submissions = await workerSubmissionsCollection
-        .find({ worker_email: email })
+        .find()
         .toArray();
       res.send(submissions);
     });
+
+    // worker submitted task review by buyer
+    app.put("/tasks/submit/review/:id", async (req, res) => {
+      const submitId = req.params.id;
+      const result = await workerSubmissionsCollection.updateOne(
+        { _id: new ObjectId(submitId) },
+        { $set: { status: "approved" } }
+      );
+      res.send(result);
+    });
+
 
     // worker withdrawal request
     app.post("/withdrawal", async (req, res) => {
@@ -137,6 +156,20 @@ async function run() {
       res.send(result);
     });
 
+    // delete or reject a submitted task by buyer
+    app.delete("/tasks/submit", async (req, res) => {
+      const taskId = req.query.id;
+      const result = await workerSubmissionsCollection.deleteOne({
+        _id: new ObjectId(taskId),
+      });
+      res.send(result);
+    });
+
+    // get only approved tasks for worker
+    app.get("/tasks/approved", async(req, res)=>{
+      const approvedTasks = await workerSubmissionsCollection.find({status: "approved"}).toArray();
+      res.send(approvedTasks);
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
