@@ -36,6 +36,14 @@ async function run() {
       res.send(result);
     });
 
+    // get only one user data by email
+    app.get("/users/email", async (req, res) => {
+      const email = req.query.email;
+      const user = await usersCollection.findOne({ email: email });
+      res.send(user);
+    });
+
+
     // register a new user
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -51,10 +59,11 @@ app.get("/users/verify", async (req, res) => {
   const user = await usersCollection.findOne({ email });
   
   if (user) {
-    return res.status(409).send({ message: "Email already exists" });
+    return res.send({ message: "Email already exists" });
+  } else {
+    return res.send({ message: "Email is available" });
   }
   
-  res.status(200).send({ message: "Email is available" });
 });
 
     // buyer add a task
@@ -120,10 +129,11 @@ app.get("/users/verify", async (req, res) => {
     });
 
     // admin update user role
-    app.put("/users/role", async (req, res) => {
-      const { email, role } = req.body;
+    app.put("/users/:id/role", async (req, res) => {
+      const userId = req.params.id;
+      const { role } = req.body;
       const result = await usersCollection.updateOne(
-        { email: email },
+        { _id: new ObjectId(userId) },
         { $set: { role: role } },
       );
       res.send(result);
