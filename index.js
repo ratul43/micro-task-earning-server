@@ -79,6 +79,12 @@ app.get("/users/verify", async (req, res) => {
       res.send(result);
     });
 
+    // get all tasks for worker
+    app.get("/allTasks", async (req, res) => {
+      const tasks = await tasksCollection.find().toArray();
+      res.send(tasks);
+    });
+
     // buyer get all his tasks
     app.get("/tasks", async (req, res) => {
       const email = req.query.email;
