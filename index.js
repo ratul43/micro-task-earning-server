@@ -94,6 +94,21 @@ app.get("/users/verify", async (req, res) => {
       res.send(tasks);
     });
 
+    // sum of all worker needed for tasks by buyer
+    app.get("/tasks/worker-count", async (req, res) => {
+      const email = req.query.email;
+      const tasks = await tasksCollection
+        .find({ buyer_email: email })
+        .toArray();
+
+        // const count = tasks[0].required_workers 
+
+
+
+      const totalWorkerNeeded = tasks.reduce((sum, task) => sum + task.required_workers, 0);
+      res.send({ totalWorkerNeeded });
+    });
+
     // buyer get all added tasks count
     app.get("/tasks/count", async (req, res) => {
       const email = req.query.email;
