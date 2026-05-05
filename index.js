@@ -94,6 +94,13 @@ app.get("/users/verify", async (req, res) => {
       res.send(tasks);
     });
 
+    // buyer get all added tasks count
+    app.get("/tasks/count", async (req, res) => {
+      const email = req.query.email;
+      const count = await tasksCollection.countDocuments({ buyer_email: email });
+      res.send({ count });
+    });
+
     // task details by id
     app.get("/tasks/details", async (req, res) => {
       const id = req.query.id;
