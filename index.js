@@ -133,8 +133,8 @@ app.get("/users/verify", async (req, res) => {
     // worker submitted task list
     app.get("/tasks/submit", async (req, res) => {
       const submissions = await workerSubmissionsCollection
-        .find()
-        .toArray();
+        .find().sort({ createdAt: -1 })
+        .toArray()
       res.send(submissions);
     });
 
