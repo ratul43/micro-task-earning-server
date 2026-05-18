@@ -29,6 +29,7 @@ async function run() {
     const tasksCollection = db.collection("tasks");
     const workerSubmissionsCollection = db.collection("workerSubmissions");
     const withdrawalsCollection = db.collection("withdrawals");
+    const earningsCollection = db.collection("earnings");
 
     // get all user data
     app.get("/users", async (req, res) => {
@@ -43,7 +44,6 @@ async function run() {
       res.send(user);
     });
 
-
     // register a new user
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -53,18 +53,17 @@ async function run() {
 
     // verify if email is already exist or not
     // Backend - verify email endpoint
-app.get("/users/verify", async (req, res) => {
-  const { email } = req.query;
-  
-  const user = await usersCollection.findOne({ email });
-  
-  if (user) {
-    return res.send({ message: "Email already exists" });
-  } else {
-    return res.send({ message: "Email is available" });
-  }
-  
-});
+    app.get("/users/verify", async (req, res) => {
+      const { email } = req.query;
+
+      const user = await usersCollection.findOne({ email });
+
+      if (user) {
+        return res.send({ message: "Email already exists" });
+      } else {
+        return res.send({ message: "Email is available" });
+      }
+    });
 
     // buyer add a task
     app.post("/tasks", async (req, res) => {
@@ -101,18 +100,21 @@ app.get("/users/verify", async (req, res) => {
         .find({ buyer_email: email })
         .toArray();
 
-        // const count = tasks[0].required_workers 
+      // const count = tasks[0].required_workers
 
-
-
-      const totalWorkerNeeded = tasks.reduce((sum, task) => sum + task.required_workers, 0);
+      const totalWorkerNeeded = tasks.reduce(
+        (sum, task) => sum + task.required_workers,
+        0,
+      );
       res.send({ totalWorkerNeeded });
     });
 
     // buyer get all added tasks count
     app.get("/tasks/count", async (req, res) => {
       const email = req.query.email;
-      const count = await tasksCollection.countDocuments({ buyer_email: email });
+      const count = await tasksCollection.countDocuments({
+        buyer_email: email,
+      });
       res.send({ count });
     });
 
@@ -130,23 +132,97 @@ app.get("/users/verify", async (req, res) => {
       res.send(result);
     });
 
+    // worker submitted task list by worker email count
+    app.get("/tasks/submit/count", async (req, res) => {
+      const email = req.query.email;
+      const count = await workerSubmissionsCollection.countDocuments({
+        worker_email: email,
+      });
+      res.send({ count });
+    });
+
+    // worker submitted task list by status count
+    app.get("/tasks/submit/status-count", async (req, res) => {
+      const email = req.query.email;
+      const pendingCount = await workerSubmissionsCollection.countDocuments({
+        worker_email: email,
+        status: "pending",
+      });
+      // const approvedCount = await workerSubmissionsCollection.countDocuments({ worker_email: email, status: "approved" });
+      // const rejectedCount = await workerSubmissionsCollection.countDocuments({ worker_email: email, status: "rejected" });
+      res.send({ pendingCount });
+    });
+
     // worker submitted task list
     app.get("/tasks/submit", async (req, res) => {
       const submissions = await workerSubmissionsCollection
-        .find().sort({ createdAt: -1 })
-        .toArray()
+        .find()
+        .sort({ createdAt: -1 })
+        .toArray();
       res.send(submissions);
     });
 
-    // worker submitted task review by buyer
-    app.put("/tasks/submit/review/:id", async (req, res) => {
-      const submitId = req.params.id;
-      const result = await workerSubmissionsCollection.updateOne(
-        { _id: new ObjectId(submitId) },
-        { $set: { status: "approved" } }
-      );
-      res.send(result);
+    // worker earning after approval
+    app.get("/earnings", async (req, res) => {
+      const email = req.query.email;
+      const earnings = await earningsCollection
+        .find({ worker_email: email })
+        .toArray();
+      res.send(earnings);
     });
+
+    // Calculate total earning for a worker after task approval and save it in the database
+    app.put("/tasks/submit/review/:id", async (req, res) => {
+  const submitId = req.params.id;
+
+  // Find the submission
+  const submission = await workerSubmissionsCollection.findOne({
+    _id: new ObjectId(submitId),
+  });
+
+  if (!submission) {
+    return res.status(404).send({ error: "Submission not found" });
+  }
+
+  // Update submission status
+  await workerSubmissionsCollection.updateOne(
+    { _id: new ObjectId(submitId) },
+    { $set: { status: "approved" } }
+  );
+
+  // Calculate total earning = sum of all approved submissions for this worker
+  const aggregation = await workerSubmissionsCollection.aggregate([
+    { $match: { worker_email: submission.worker_email, status: "approved" } },
+    { $group: { _id: null, total: { $sum: "$payable_amount" } } }
+  ]).toArray();
+
+  const totalEarning = aggregation.length > 0 ? aggregation[0].total : 0;
+
+  // Save the total earning back into the worker’s submissions (or worker profile if you have one)
+  await workerSubmissionsCollection.updateMany(
+    { worker_email: submission.worker_email },
+    { $set: { total_earning: totalEarning } }
+  );
+
+  res.send({ success: true, totalEarning });
+});
+
+
+
+
+
+
+
+    // worker get total earning
+    app.get("/total-earning", async (req, res) => {
+      const email = req.query.email;
+      const submission = await workerSubmissionsCollection.findOne({
+        worker_email: email,
+      });
+      const totalEarning = submission ? submission.total_earning : 0;
+      res.send({ totalEarning });
+    });
+
 
 
     // worker withdrawal request
@@ -186,10 +262,10 @@ app.get("/users/verify", async (req, res) => {
     // update buyer added tasks
     app.put("/tasks", async (req, res) => {
       const updatedData = req.body;
-      const {id} = req.query;
+      const { id } = req.query;
       const result = await tasksCollection.updateOne(
         { _id: new ObjectId(id) },
-        { $set: updatedData }
+        { $set: updatedData },
       );
       res.send(result);
     });
@@ -204,10 +280,12 @@ app.get("/users/verify", async (req, res) => {
     });
 
     // get only approved tasks for worker
-    app.get("/tasks/approved", async(req, res)=>{
-      const approvedTasks = await workerSubmissionsCollection.find({status: "approved"}).toArray();
+    app.get("/tasks/approved", async (req, res) => {
+      const approvedTasks = await workerSubmissionsCollection
+        .find({ status: "approved" })
+        .toArray();
       res.send(approvedTasks);
-    })
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
