@@ -3,11 +3,14 @@ const app = express();
 const port = 3000;
 const cors = require("cors");
 
+
 app.use(express.json());
 app.use(cors());
 require("dotenv").config();
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const uri = `mongodb+srv://${process.env.DB_USER_NAME}:${process.env.DB_PASSWORD}@cluster0.sb5wtw8.mongodb.net/?appName=Cluster0`;
 
@@ -286,6 +289,28 @@ async function run() {
         .toArray();
       res.send(approvedTasks);
     });
+
+    // stripe payment intent creation
+    app.post("/create-payment-intent", async(req, res) =>{
+      try{
+        const { amount, currency } = req.body;
+
+        const paymentIntent = await stripe.paymentIntents.create({
+      amount, // in smallest currency unit (e.g. cents)
+      currency, // e.g. "usd"
+      automatic_payment_methods: { enabled: true },
+    });
+
+    res.send({ clientSecret: paymentIntent.client_secret
+
+    })
+      }
+      catch(error){
+        res.status(500).send({ error: error.message });
+      }
+    })
+
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
