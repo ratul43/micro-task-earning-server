@@ -291,26 +291,83 @@ async function run() {
     });
 
     // stripe payment intent creation
-    app.post("/create-payment-intent", async(req, res) =>{
-      try{
+    app.post("/create-payment-intent", async (req, res) => {
+      try {
         const { amount, currency } = req.body;
 
         const paymentIntent = await stripe.paymentIntents.create({
-      amount, // in smallest currency unit (e.g. cents)
-      currency, // e.g. "usd"
-      automatic_payment_methods: { enabled: true },
-    });
+          amount,
+          currency,
+          automatic_payment_methods: { enabled: true },
+        });
 
-    res.send({ clientSecret: paymentIntent.client_secret
-
-    })
-      }
-      catch(error){
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (error) {
         res.status(500).send({ error: error.message });
       }
-    })
+    });
 
+    app.post("/create-checkout-session", async (req, res) => {
+      try {
+        const { amount, currency, coins, success_url, cancel_url } = req.body;
 
+        if (!amount || !currency || !coins || !success_url || !cancel_url) {
+          return res.status(400).send({ error: "Missing required checkout session fields." });
+        }
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          mode: "payment",
+          line_items: [
+            {
+              price_data: {
+                currency,
+                product_data: {
+                  name: `${coins} coins purchase`,
+                },
+                unit_amount: amount,
+              },
+              quantity: 1,
+            },
+          ],
+          metadata: {
+            coins: String(coins),
+          },
+          success_url,
+          cancel_url,
+        });
+
+        res.json({ url: session.url });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    app.patch("/users/coins", async (req, res) => {
+      try {
+        const { email, coins } = req.body;
+        if (!email || typeof coins !== "number") {
+          return res.status(400).send({ error: "Email and numeric coins are required." });
+        }
+
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).send({ error: "User not found." });
+        }
+
+        const currentCoins = Number(user.coins) || 0;
+        const updatedCoins = currentCoins + coins;
+
+        await usersCollection.updateOne(
+          { email },
+          { $set: { coins: updatedCoins } },
+        );
+
+        res.send({ success: true, coins: updatedCoins });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
