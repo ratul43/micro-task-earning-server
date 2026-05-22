@@ -33,6 +33,7 @@ async function run() {
     const workerSubmissionsCollection = db.collection("workerSubmissions");
     const withdrawalsCollection = db.collection("withdrawals");
     const earningsCollection = db.collection("earnings");
+    const paymentsCollection = db.collection("payments");
 
     // get all user data
     app.get("/users", async (req, res) => {
@@ -343,6 +344,73 @@ async function run() {
       }
     });
 
+    app.post("/payments/complete", async (req, res) => {
+      try {
+        const { sessionId, email } = req.body;
+
+        if (!sessionId || !email) {
+          return res.status(400).send({ error: "sessionId and email are required." });
+        }
+
+        const session = await stripe.checkout.sessions.retrieve(sessionId, {
+          expand: ["payment_intent"],
+        });
+
+        if (!session) {
+          return res.status(404).send({ error: "Stripe session not found." });
+        }
+
+        if (session.payment_status !== "paid") {
+          return res.status(400).send({ error: "Payment not completed." });
+        }
+
+        const coins = Number(session.metadata?.coins || 0);
+        const amount = Number(session.amount_total || 0) / 100;
+        const currency = session.currency;
+        const paymentIntentId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id;
+
+        if (!coins || !paymentIntentId) {
+          return res.status(400).send({ error: "Payment session is missing required metadata." });
+        }
+
+        const existingPayment = await paymentsCollection.findOne({ paymentIntentId });
+        if (existingPayment) {
+          const user = await usersCollection.findOne({ email });
+          return res.send({ success: true, coins: Number(user?.coins || 0), alreadyProcessed: true });
+        }
+
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).send({ error: "User not found." });
+        }
+
+        const currentCoins = Number(user.coins) || 0;
+        const updatedCoins = currentCoins + coins;
+
+        await usersCollection.updateOne(
+          { email },
+          { $set: { coins: updatedCoins } },
+        );
+
+        await paymentsCollection.insertOne({
+          email,
+          coins,
+          amount,
+          currency,
+          paymentIntentId,
+          status: "completed",
+          timestamp: new Date().toISOString(),
+          createdAt: new Date(),
+        });
+
+        res.send({ success: true, coins: updatedCoins });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
     app.patch("/users/coins", async (req, res) => {
       try {
         const { email, coins } = req.body;
@@ -364,6 +432,33 @@ async function run() {
         );
 
         res.send({ success: true, coins: updatedCoins });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    // Save payment transaction
+    app.post("/payments", async (req, res) => {
+      try {
+        const { email, coins, amount, currency, paymentIntentId, status, timestamp } = req.body;
+
+        if (!email || !coins || !amount || !currency) {
+          return res.status(400).send({ error: "Missing required payment fields." });
+        }
+
+        const paymentData = {
+          email,
+          coins,
+          amount,
+          currency,
+          paymentIntentId,
+          status: status || "completed",
+          timestamp: timestamp || new Date().toISOString(),
+          createdAt: new Date(),
+        };
+
+        const result = await paymentsCollection.insertOne(paymentData);
+        res.send({ success: true, paymentId: result.insertedId });
       } catch (error) {
         res.status(500).send({ error: error.message });
       }
