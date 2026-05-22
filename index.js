@@ -464,6 +464,18 @@ async function run() {
       }
     });
 
+    // Get payment history (optionally filtered by email)
+    app.get("/payments", async (req, res) => {
+      try {
+        const { email } = req.query;
+        const filter = email ? { email } : {};
+        const payments = await paymentsCollection.find(filter).sort({ timestamp: -1 }).toArray();
+        res.send(payments);
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
