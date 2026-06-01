@@ -188,10 +188,11 @@ async function run() {
     return res.status(404).send({ error: "Submission not found" });
   }
 
-  // Update submission status
+  // Convert payable amount to a number and approve the submission
+  const payableAmount = Number(submission.payable_amount) || 0;
   await workerSubmissionsCollection.updateOne(
     { _id: new ObjectId(submitId) },
-    { $set: { status: "approved" } }
+    { $set: { status: "approved", payable_amount: payableAmount } }
   );
 
   // Calculate total earning = sum of all approved submissions for this worker
@@ -241,10 +242,16 @@ async function run() {
     // worker get total earning
     app.get("/total-earning", async (req, res) => {
       const email = req.query.email;
-      const submission = await workerSubmissionsCollection.findOne({
-        worker_email: email,
-      });
-      const totalEarning = submission ? submission.total_earning : 0;
+      if (!email) {
+        return res.status(400).send({ error: "Email query parameter is required." });
+      }
+
+      const aggregation = await workerSubmissionsCollection.aggregate([
+        { $match: { worker_email: email, status: "approved" } },
+        { $group: { _id: null, total: { $sum: "$payable_amount" } } }
+      ]).toArray();
+
+      const totalEarning = aggregation.length > 0 ? aggregation[0].total : 0;
       res.send({ totalEarning });
     });
 
