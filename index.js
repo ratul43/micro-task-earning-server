@@ -264,6 +264,29 @@ async function run() {
       res.send(result);
     });
 
+    // worker withdrawal request
+    app.get("/withdrawal", async (req, res) => {
+      const result = await withdrawalsCollection.find({}).toArray();
+      res.send(result);
+    });
+
+    // admin update withdrawal status
+    app.put("/withdrawal/:id", async (req, res) => {
+      try {
+        const withdrawalId = req.params.id;
+        const { status } = req.body;
+
+        const result = await withdrawalsCollection.updateOne(
+          { _id: new ObjectId(withdrawalId) },
+          { $set: { status } }
+        );
+
+        res.send({ success: true, modifiedCount: result.modifiedCount });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
     // admin update user role
     app.put("/users/:id/role", async (req, res) => {
       const userId = req.params.id;
