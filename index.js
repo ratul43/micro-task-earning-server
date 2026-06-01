@@ -211,6 +211,27 @@ async function run() {
   res.send({ success: true, totalEarning });
 });
 
+    // fetch submission info by id and return worker_email/payable amount
+    app.put("/tasks/submit", async (req, res) => {
+      const { id } = req.body;
+      if (!id) {
+        return res.status(400).send({ error: "Submission id is required." });
+      }
+
+      const submission = await workerSubmissionsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!submission) {
+        return res.status(404).send({ error: "Submission not found." });
+      }
+
+      res.send({
+        worker_email: submission.worker_email,
+        payable_amount: Number(submission.payable_amount) || 0,
+      });
+    });
+
 
 
 
@@ -245,6 +266,31 @@ async function run() {
         { $set: { role: role } },
       );
       res.send(result);
+    });
+
+    // update user coins by email
+    app.put("/users", async (req, res) => {
+      try {
+        const { email, coins } = req.body;
+        if (!email || typeof coins !== "number") {
+          return res.status(400).send({ error: "Email and numeric coins are required." });
+        }
+
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).send({ error: "User not found." });
+        }
+
+        const updatedCoins = (Number(user.coins) || 0) + coins;
+        await usersCollection.updateOne(
+          { email },
+          { $set: { coins: updatedCoins } },
+        );
+
+        res.send({ success: true, coins: updatedCoins });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // admin delete a user
