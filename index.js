@@ -157,6 +157,43 @@ async function run() {
       res.send({ count });
     });
 
+    // reject a submitted task by buyer (mark rejected and increment required_workers)
+    app.put("/tasks/submit/reject/:id", async (req, res) => {
+      try {
+        const submitId = req.params.id;
+
+        const submission = await workerSubmissionsCollection.findOne({
+          _id: new ObjectId(submitId),
+        });
+
+        if (!submission) {
+          return res.status(404).send({ error: "Submission not found" });
+        }
+
+        // Mark submission as rejected
+        await workerSubmissionsCollection.updateOne(
+          { _id: new ObjectId(submitId) },
+          { $set: { status: "rejected" } }
+        );
+
+        // Increment required_workers back on the parent task
+        if (submission.task_id) {
+          try {
+            await tasksCollection.updateOne(
+              { _id: new ObjectId(submission.task_id) },
+              { $inc: { required_workers: 1 } }
+            );
+          } catch (err) {
+            console.error("Failed to increment required_workers:", err);
+          }
+        }
+
+        res.send({ success: true });
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
+
     // worker submitted task list by status count
     app.get("/tasks/submit/status-count", async (req, res) => {
       const email = req.query.email;
