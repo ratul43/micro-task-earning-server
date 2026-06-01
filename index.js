@@ -133,6 +133,18 @@ async function run() {
     app.post("/tasks/submit", async (req, res) => {
       const taskInfo = req.body;
       const result = await workerSubmissionsCollection.insertOne(taskInfo);
+
+      if (taskInfo.task_id) {
+        try {
+          await tasksCollection.updateOne(
+            { _id: new ObjectId(taskInfo.task_id), required_workers: { $gt: 0 } },
+            { $inc: { required_workers: -1 } }
+          );
+        } catch (error) {
+          console.error("Failed to decrement required_workers:", error);
+        }
+      }
+
       res.send(result);
     });
 
