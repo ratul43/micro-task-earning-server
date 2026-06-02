@@ -3,7 +3,6 @@ const app = express();
 const port = 3000;
 const cors = require("cors");
 
-
 app.use(express.json());
 app.use(cors());
 require("dotenv").config();
@@ -32,6 +31,7 @@ async function run() {
     const tasksCollection = db.collection("tasks");
     const workerSubmissionsCollection = db.collection("workerSubmissions");
     const withdrawalsCollection = db.collection("withdrawals");
+    const notificationsCollection = db.collection("notifications");
     const earningsCollection = db.collection("earnings");
     const paymentsCollection = db.collection("payments");
 
@@ -134,11 +134,30 @@ async function run() {
       const taskInfo = req.body;
       const result = await workerSubmissionsCollection.insertOne(taskInfo);
 
+      // create notification for the buyer about new submission
+      try {
+        if (taskInfo.buyer_email) {
+          const notif = {
+            message: `You have a new submission for ${taskInfo.task_title} by ${taskInfo.worker_name}`,
+            toEmail: taskInfo.buyer_email,
+            actionRoute: "/dashboard/submissions-review",
+            time: new Date(),
+            read: false,
+          };
+          await notificationsCollection.insertOne(notif);
+        }
+      } catch (err) {
+        console.error("Failed to create submission notification:", err);
+      }
+
       if (taskInfo.task_id) {
         try {
           await tasksCollection.updateOne(
-            { _id: new ObjectId(taskInfo.task_id), required_workers: { $gt: 0 } },
-            { $inc: { required_workers: -1 } }
+            {
+              _id: new ObjectId(taskInfo.task_id),
+              required_workers: { $gt: 0 },
+            },
+            { $inc: { required_workers: -1 } },
           );
         } catch (error) {
           console.error("Failed to decrement required_workers:", error);
@@ -173,15 +192,29 @@ async function run() {
         // Mark submission as rejected
         await workerSubmissionsCollection.updateOne(
           { _id: new ObjectId(submitId) },
-          { $set: { status: "rejected" } }
+          { $set: { status: "rejected" } },
         );
+
+        // notify worker about rejection
+        try {
+          const notif = {
+            message: `Your submission for ${submission.task_title} was rejected by ${submission.buyer_name}`,
+            toEmail: submission.worker_email,
+            actionRoute: "/dashboard/submissions",
+            time: new Date(),
+            read: false,
+          };
+          await notificationsCollection.insertOne(notif);
+        } catch (err) {
+          console.error("Failed to create rejection notification:", err);
+        }
 
         // Increment required_workers back on the parent task
         if (submission.task_id) {
           try {
             await tasksCollection.updateOne(
               { _id: new ObjectId(submission.task_id) },
-              { $inc: { required_workers: 1 } }
+              { $inc: { required_workers: 1 } },
             );
           } catch (err) {
             console.error("Failed to increment required_workers:", err);
@@ -243,40 +276,61 @@ async function run() {
 
     // Calculate total earning for a worker after task approval and save it in the database
     app.put("/tasks/submit/review/:id", async (req, res) => {
-  const submitId = req.params.id;
+      const submitId = req.params.id;
 
-  // Find the submission
-  const submission = await workerSubmissionsCollection.findOne({
-    _id: new ObjectId(submitId),
-  });
+      // Find the submission
+      const submission = await workerSubmissionsCollection.findOne({
+        _id: new ObjectId(submitId),
+      });
 
-  if (!submission) {
-    return res.status(404).send({ error: "Submission not found" });
-  }
+      if (!submission) {
+        return res.status(404).send({ error: "Submission not found" });
+      }
 
-  // Convert payable amount to a number and approve the submission
-  const payableAmount = Number(submission.payable_amount) || 0;
-  await workerSubmissionsCollection.updateOne(
-    { _id: new ObjectId(submitId) },
-    { $set: { status: "approved", payable_amount: payableAmount } }
-  );
+      // Convert payable amount to a number and approve the submission
+      const payableAmount = Number(submission.payable_amount) || 0;
+      await workerSubmissionsCollection.updateOne(
+        { _id: new ObjectId(submitId) },
+        { $set: { status: "approved", payable_amount: payableAmount } },
+      );
 
-  // Calculate total earning = sum of all approved submissions for this worker
-  const aggregation = await workerSubmissionsCollection.aggregate([
-    { $match: { worker_email: submission.worker_email, status: "approved" } },
-    { $group: { _id: null, total: { $sum: "$payable_amount" } } }
-  ]).toArray();
+      // notify worker about approval and earning
+      try {
+        const notif = {
+          message: `you have earned ${payableAmount} from ${submission.buyer_name} for completing ${submission.task_title}`,
+          toEmail: submission.worker_email,
+          actionRoute: "/dashboard",
+          time: new Date(),
+          read: false,
+        };
+        await notificationsCollection.insertOne(notif);
+      } catch (err) {
+        console.error("Failed to create approval notification:", err);
+      }
 
-  const totalEarning = aggregation.length > 0 ? aggregation[0].total : 0;
+      // Calculate total earning = sum of all approved submissions for this worker
+      const aggregation = await workerSubmissionsCollection
+        .aggregate([
+          {
+            $match: {
+              worker_email: submission.worker_email,
+              status: "approved",
+            },
+          },
+          { $group: { _id: null, total: { $sum: "$payable_amount" } } },
+        ])
+        .toArray();
 
-  // Save the total earning back into the worker’s submissions (or worker profile if you have one)
-  await workerSubmissionsCollection.updateMany(
-    { worker_email: submission.worker_email },
-    { $set: { total_earning: totalEarning } }
-  );
+      const totalEarning = aggregation.length > 0 ? aggregation[0].total : 0;
 
-  res.send({ success: true, totalEarning });
-});
+      // Save the total earning back into the worker’s submissions (or worker profile if you have one)
+      await workerSubmissionsCollection.updateMany(
+        { worker_email: submission.worker_email },
+        { $set: { total_earning: totalEarning } },
+      );
+
+      res.send({ success: true, totalEarning });
+    });
 
     // fetch submission info by id and return worker_email/payable amount
     app.put("/tasks/submit", async (req, res) => {
@@ -299,29 +353,25 @@ async function run() {
       });
     });
 
-
-
-
-
-
-
     // worker get total earning
     app.get("/total-earning", async (req, res) => {
       const email = req.query.email;
       if (!email) {
-        return res.status(400).send({ error: "Email query parameter is required." });
+        return res
+          .status(400)
+          .send({ error: "Email query parameter is required." });
       }
 
-      const aggregation = await workerSubmissionsCollection.aggregate([
-        { $match: { worker_email: email, status: "approved" } },
-        { $group: { _id: null, total: { $sum: "$payable_amount" } } }
-      ]).toArray();
+      const aggregation = await workerSubmissionsCollection
+        .aggregate([
+          { $match: { worker_email: email, status: "approved" } },
+          { $group: { _id: null, total: { $sum: "$payable_amount" } } },
+        ])
+        .toArray();
 
       const totalEarning = aggregation.length > 0 ? aggregation[0].total : 0;
       res.send({ totalEarning });
     });
-
-
 
     // worker withdrawal request
     app.post("/withdrawal", async (req, res) => {
@@ -341,15 +391,59 @@ async function run() {
       try {
         const withdrawalId = req.params.id;
         const { status } = req.body;
+        // find withdrawal to notify user if needed
+        const withdrawalDoc = await withdrawalsCollection.findOne({
+          _id: new ObjectId(withdrawalId),
+        });
 
         const result = await withdrawalsCollection.updateOne(
           { _id: new ObjectId(withdrawalId) },
-          { $set: { status } }
+          { $set: { status } },
         );
+
+        if (
+          result.modifiedCount > 0 &&
+          status === "approved" &&
+          withdrawalDoc
+        ) {
+          try {
+            const notif = {
+              message: `Your withdrawal request of ${withdrawalDoc.withdrawal_amount} dollar has been approved`,
+              toEmail: withdrawalDoc.worker_email,
+              actionRoute: "/dashboard/my-withdraw-requests",
+              time: new Date(),
+              read: false,
+            };
+            await notificationsCollection.insertOne(notif);
+          } catch (err) {
+            console.error(
+              "Failed to create withdrawal approval notification:",
+              err,
+            );
+          }
+        }
 
         res.send({ success: true, modifiedCount: result.modifiedCount });
       } catch (error) {
         res.status(500).send({ error: error.message });
+      }
+    });
+
+    // get notifications for a user by email (sorted desc)
+    app.get("/notifications", async (req, res) => {
+      try {
+        const email = req.query.email;
+        if (!email)
+          return res
+            .status(400)
+            .send({ error: "Email query parameter is required." });
+        const notifs = await notificationsCollection
+          .find({ toEmail: email })
+          .sort({ time: -1 })
+          .toArray();
+        res.send(notifs);
+      } catch (err) {
+        res.status(500).send({ error: err.message });
       }
     });
 
@@ -369,7 +463,9 @@ async function run() {
       try {
         const { email, coins } = req.body;
         if (!email || typeof coins !== "number") {
-          return res.status(400).send({ error: "Email and numeric coins are required." });
+          return res
+            .status(400)
+            .send({ error: "Email and numeric coins are required." });
         }
 
         const user = await usersCollection.findOne({ email });
@@ -455,7 +551,9 @@ async function run() {
         const { amount, currency, coins, success_url, cancel_url } = req.body;
 
         if (!amount || !currency || !coins || !success_url || !cancel_url) {
-          return res.status(400).send({ error: "Missing required checkout session fields." });
+          return res
+            .status(400)
+            .send({ error: "Missing required checkout session fields." });
         }
 
         const session = await stripe.checkout.sessions.create({
@@ -491,7 +589,9 @@ async function run() {
         const { sessionId, email } = req.body;
 
         if (!sessionId || !email) {
-          return res.status(400).send({ error: "sessionId and email are required." });
+          return res
+            .status(400)
+            .send({ error: "sessionId and email are required." });
         }
 
         const session = await stripe.checkout.sessions.retrieve(sessionId, {
@@ -509,18 +609,27 @@ async function run() {
         const coins = Number(session.metadata?.coins || 0);
         const amount = Number(session.amount_total || 0) / 100;
         const currency = session.currency;
-        const paymentIntentId = typeof session.payment_intent === "string"
-          ? session.payment_intent
-          : session.payment_intent?.id;
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id;
 
         if (!coins || !paymentIntentId) {
-          return res.status(400).send({ error: "Payment session is missing required metadata." });
+          return res
+            .status(400)
+            .send({ error: "Payment session is missing required metadata." });
         }
 
-        const existingPayment = await paymentsCollection.findOne({ paymentIntentId });
+        const existingPayment = await paymentsCollection.findOne({
+          paymentIntentId,
+        });
         if (existingPayment) {
           const user = await usersCollection.findOne({ email });
-          return res.send({ success: true, coins: Number(user?.coins || 0), alreadyProcessed: true });
+          return res.send({
+            success: true,
+            coins: Number(user?.coins || 0),
+            alreadyProcessed: true,
+          });
         }
 
         const user = await usersCollection.findOne({ email });
@@ -557,7 +666,9 @@ async function run() {
       try {
         const { email, coins } = req.body;
         if (!email || typeof coins !== "number") {
-          return res.status(400).send({ error: "Email and numeric coins are required." });
+          return res
+            .status(400)
+            .send({ error: "Email and numeric coins are required." });
         }
 
         const user = await usersCollection.findOne({ email });
@@ -582,10 +693,20 @@ async function run() {
     // Save payment transaction
     app.post("/payments", async (req, res) => {
       try {
-        const { email, coins, amount, currency, paymentIntentId, status, timestamp } = req.body;
+        const {
+          email,
+          coins,
+          amount,
+          currency,
+          paymentIntentId,
+          status,
+          timestamp,
+        } = req.body;
 
         if (!email || !coins || !amount || !currency) {
-          return res.status(400).send({ error: "Missing required payment fields." });
+          return res
+            .status(400)
+            .send({ error: "Missing required payment fields." });
         }
 
         const paymentData = {
@@ -611,7 +732,10 @@ async function run() {
       try {
         const { email } = req.query;
         const filter = email ? { email } : {};
-        const payments = await paymentsCollection.find(filter).sort({ timestamp: -1 }).toArray();
+        const payments = await paymentsCollection
+          .find(filter)
+          .sort({ timestamp: -1 })
+          .toArray();
         res.send(payments);
       } catch (error) {
         res.status(500).send({ error: error.message });
