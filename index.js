@@ -447,6 +447,41 @@ async function run() {
       }
     });
 
+    // mark a notification as read by id
+    app.put("/notifications/:id/read", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await notificationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { read: true } },
+        );
+        if (result.modifiedCount === 0) {
+          return res.status(404).send({ error: "Notification not found." });
+        }
+        res.send({ success: true });
+      } catch (err) {
+        res.status(500).send({ error: err.message });
+      }
+    });
+
+    // mark all notifications as read for a user
+    app.put("/notifications/read-all", async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email)
+          return res
+            .status(400)
+            .send({ error: "Email is required." });
+        const result = await notificationsCollection.updateMany(
+          { toEmail: email, read: { $ne: true } },
+          { $set: { read: true } },
+        );
+        res.send({ success: true, modifiedCount: result.modifiedCount });
+      } catch (err) {
+        res.status(500).send({ error: err.message });
+      }
+    });
+
     // admin update user role
     app.put("/users/:id/role", async (req, res) => {
       const userId = req.params.id;
