@@ -207,15 +207,26 @@ async function run() {
     });
 
     // worker submitted task list (optionally filter by worker email via ?email=<worker_email>)
+    // Supports pagination via ?page=<number>&limit=<number>
     app.get("/tasks/submit", async (req, res) => {
       try {
         const email = req.query.email;
+        const page = Math.max(1, parseInt(req.query.page)) || 1;
+        const limit = Math.max(1, parseInt(req.query.limit)) || 10;
         const filter = email ? { worker_email: email } : {};
+
+        const total = await workerSubmissionsCollection.countDocuments(filter);
+        const totalPages = Math.ceil(total / limit) || 1;
+        const skip = (page - 1) * limit;
+
         const submissions = await workerSubmissionsCollection
           .find(filter)
           .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
           .toArray();
-        res.send(submissions);
+
+        res.send({ submissions, total, page, totalPages, limit });
       } catch (error) {
         res.status(500).send({ error: error.message });
       }
