@@ -206,13 +206,19 @@ async function run() {
       res.send({ pendingCount });
     });
 
-    // worker submitted task list
+    // worker submitted task list (optionally filter by worker email via ?email=<worker_email>)
     app.get("/tasks/submit", async (req, res) => {
-      const submissions = await workerSubmissionsCollection
-        .find()
-        .sort({ createdAt: -1 })
-        .toArray();
-      res.send(submissions);
+      try {
+        const email = req.query.email;
+        const filter = email ? { worker_email: email } : {};
+        const submissions = await workerSubmissionsCollection
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.send(submissions);
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
     });
 
     // worker earning after approval
