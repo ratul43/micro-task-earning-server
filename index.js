@@ -89,8 +89,27 @@ async function run() {
       }
     });
 
+    // Middleware for verify role based authentication
+    const verifyRole = (role) => {
+      return async (req, res, next) => {
+        const email = req.query.email;
+
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        if (user.role !== role) {
+          return res.status(403).send({ message: "Forbidden access" });
+        }
+
+        next();
+      };
+    };
+
     // get all user data
-    app.get("/users",verifyToken, async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
@@ -143,7 +162,7 @@ async function run() {
     });
 
     // buyer get all his tasks
-    app.get("/tasks", async (req, res) => {
+    app.get("/tasks", verifyRole("buyer"), async (req, res) => {
       const email = req.query.email;
       const tasks = await tasksCollection
         .find({ buyer_email: email })
