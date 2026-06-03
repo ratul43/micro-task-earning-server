@@ -143,7 +143,7 @@ async function run() {
     });
 
     // buyer add a task
-    app.post("/tasks", async (req, res) => {
+    app.post("/tasks", verifyRole("buyer"), async (req, res) => {
       const task = req.body;
       const finalTaskData = {
         ...task,
