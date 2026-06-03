@@ -203,7 +203,7 @@ async function run() {
     });
 
     // worker submit a task
-    app.post("/tasks/submit", async (req, res) => {
+    app.post("/tasks/submit", verifyRole("worker"), async (req, res) => {
       const taskInfo = req.body;
       const result = await workerSubmissionsCollection.insertOne(taskInfo);
 
