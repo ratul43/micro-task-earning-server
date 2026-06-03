@@ -196,7 +196,7 @@ async function run() {
     });
 
     // task details by id
-    app.get("/tasks/details", async (req, res) => {
+    app.get("/tasks/details", verifyToken, async (req, res) => {
       const id = req.query.id;
       const task = await tasksCollection.findOne({ _id: new ObjectId(id) });
       res.send(task);
