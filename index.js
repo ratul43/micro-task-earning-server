@@ -4,10 +4,15 @@ const port = 3000;
 const cors = require("cors");
 
 // security authorization
+require("dotenv").config();
 
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./privateKeyAuthentication.json");
+const decoded = Buffer.from(process.env.FIREBASE_SERVICE_KEY, "base64").toString("utf8");
+
+
+const serviceAccount = JSON.parse(decoded)
+
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
@@ -20,7 +25,6 @@ app.use(
     credentials: true,
   }),
 );
-require("dotenv").config();
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
