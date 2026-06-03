@@ -3,8 +3,21 @@ const app = express();
 const port = 3000;
 const cors = require("cors");
 
+// security authorization
+
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./privateKeyAuthentication.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true 
+}));
 require("dotenv").config();
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -34,6 +47,27 @@ async function run() {
     const notificationsCollection = db.collection("notifications");
     const earningsCollection = db.collection("earnings");
     const paymentsCollection = db.collection("payments");
+
+    // secure the api with jwt token verification middleware
+
+   app.post("/jwt", async (req, res) => {
+  const { token } = req.body;
+
+  try {
+    const decoded = await admin.auth().verifyIdToken(token);
+
+    res.send({
+      success: true,
+      user: decoded,
+    });
+  } catch (error) {
+    console.log("JWT verify error:", error.message);
+
+    res.status(401).send({
+      message: "Unauthorized user",
+    });
+  }
+});
 
     // get all user data
     app.get("/users", async (req, res) => {
@@ -469,9 +503,7 @@ async function run() {
       try {
         const { email } = req.body;
         if (!email)
-          return res
-            .status(400)
-            .send({ error: "Email is required." });
+          return res.status(400).send({ error: "Email is required." });
         const result = await notificationsCollection.updateMany(
           { toEmail: email, read: { $ne: true } },
           { $set: { read: true } },
