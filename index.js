@@ -109,7 +109,7 @@ async function run() {
     };
 
     // get all user data
-    app.get("/users", verifyToken, async (req, res) => {
+    app.get("/users", verifyToken, verifyRole("admin"), async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
